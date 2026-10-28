@@ -57,13 +57,22 @@
     grid-template-columns: 1fr auto;
     grid-template-areas: "name score" "controls controls";
     gap: 10px;
-    background: var(--card);
+    background: color-mix(in srgb, var(--team, transparent) 10%, var(--card));
     border: 1px solid var(--border);
+    border-left: 6px solid var(--team, var(--border));
     border-radius: 14px;
     padding: 14px;
   }
-  li.leader { border-color: var(--accent); }
-  .name { grid-area: name; font-weight: 600; font-size: 1.15rem; word-break: break-word; align-self: center; }
+  li.leader { border-color: var(--accent); border-left-color: var(--team, var(--accent)); }
+  .name { grid-area: name; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1.15rem; word-break: break-word; min-width: 0; }
+  .swatch {
+    flex: none; width: 28px; height: 28px; padding: 0;
+    border: 2px solid var(--border); border-radius: 50%;
+    background: none; cursor: pointer;
+  }
+  .swatch::-webkit-color-swatch-wrapper { padding: 0; }
+  .swatch::-webkit-color-swatch { border: none; border-radius: 50%; }
+  .swatch::-moz-color-swatch { border: none; border-radius: 50%; }
   .score { grid-area: score; font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
   .controls { grid-area: controls; display: flex; gap: 8px; flex-wrap: wrap; }
   .controls button { flex: 1; min-width: 52px; font-weight: 600; font-size: 1.05rem; }
@@ -100,15 +109,25 @@
   const form = document.getElementById('add-form');
   const nameInput = document.getElementById('team-name');
 
+  const PALETTE = ['#2563eb', '#dc2626', '#16a34a', '#f59e0b', '#9333ea', '#0891b2', '#db2777', '#65a30d'];
+
   let teams = load();
 
   function load() {
     try {
       const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      return Array.isArray(data) ? data : [];
+      if (!Array.isArray(data)) return [];
+      // Teams saved before colors existed get one from the palette.
+      data.forEach((t, i) => { t.color ||= PALETTE[i % PALETTE.length]; });
+      return data;
     } catch {
       return [];
     }
+  }
+
+  function nextColor() {
+    const used = new Set(teams.map(t => t.color));
+    return PALETTE.find(c => !used.has(c)) || PALETTE[teams.length % PALETTE.length];
   }
 
   function save() {
@@ -127,10 +146,27 @@
     for (const team of teams) {
       const li = document.createElement('li');
       if (teams.length > 1 && team.score === top && top > 0) li.classList.add('leader');
+      li.style.setProperty('--team', team.color);
+
+      const swatch = document.createElement('input');
+      swatch.type = 'color';
+      swatch.className = 'swatch';
+      swatch.value = team.color;
+      swatch.title = `Change ${team.name}'s color`;
+      swatch.setAttribute('aria-label', swatch.title);
+      // Update in place rather than re-rendering, which would close the picker.
+      swatch.oninput = () => {
+        team.color = swatch.value;
+        li.style.setProperty('--team', team.color);
+        save();
+      };
+
+      const label = document.createElement('span');
+      label.textContent = team.name;
 
       const name = document.createElement('div');
       name.className = 'name';
-      name.textContent = team.name;
+      name.append(swatch, label);
 
       const score = document.createElement('div');
       score.className = 'score';
@@ -166,7 +202,7 @@
     e.preventDefault();
     const name = nameInput.value.trim();
     if (!name) return;
-    teams.push({ id: Date.now(), name, score: 0 });
+    teams.push({ id: Date.now(), name, score: 0, color: nextColor() });
     nameInput.value = '';
     save(); render();
   });
